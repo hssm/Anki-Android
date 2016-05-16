@@ -62,6 +62,8 @@
     <string name="stats_overview_total_reviews">Total: &lt;b&gt;%1$d&lt;/b&gt; reviews</string>
     <string name="stats_overview_reviews_per_day_studydays">Average for days studied: &lt;b&gt;%1$.1f&lt;/b&gt; reviews/day</string>
     <string name="stats_overview_reviews_per_day_all">If you studied every day: &lt;b&gt;%1$.1f&lt;/b&gt; reviews/day</string>
+    <string name="stats_overview_total_reviews_minutes">Total: &lt;b&gt;%1$d&lt;/b&gt; minutes</string>
+    <string name="stats_overview_average_answer_time">Average answer time: &lt;b&gt;%1$.1f&lt;/b&gt; minutes</string>
 
     <string name="stats_overview_time_per_day_studydays">Average for days studied: &lt;b&gt;%1$.1f&lt;/b&gt; minutes/day</string>
     <string name="stats_overview_time_per_day_all">If you studied every day:  &lt;b&gt;%1$.1f&lt;/b&gt; minutes/day</string>

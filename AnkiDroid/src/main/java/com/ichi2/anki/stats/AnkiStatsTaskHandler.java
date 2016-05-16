@@ -18,14 +18,12 @@ package com.ichi2.anki.stats;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.os.AsyncTask;
-import android.support.v4.view.ViewPager;
 import android.view.View;
 import android.webkit.WebView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.ichi2.anki.R;
-import com.ichi2.anki.Statistics;
 import com.ichi2.libanki.Collection;
 import com.ichi2.libanki.Stats;
 import com.ichi2.themes.Themes;
@@ -155,7 +153,7 @@ public class AnkiStatsTaskHandler {
                 mWebView = (WebView) params[0];
                 mProgressBar = (ProgressBar) params[1];
                 OverviewStatsBuilder overviewStatsBuilder = new OverviewStatsBuilder(mWebView, mCollectionData, mIsWholeCollection, mStatType);
-                return overviewStatsBuilder.createInfoHtmlString();
+                return overviewStatsBuilder.report();
             } finally {
                 sLock.unlock();
             }
