@@ -262,12 +262,12 @@ public class OverviewStatsBuilder {
             String query;
             query = String.format(Locale.US,
                     "select (due-%d)/%d as day,\n" +
-                            "sum(case when ivl < 21 then 1 else 0 end), -- yng\n" +
-                            "sum(case when ivl >= 21 then 1 else 0 end) -- mtr\n" +
-                            "from cards\n" +
-                            "where did in %s and queue in (2,3)\n" +
-                            "%s\n" +
-                            "group by day order by day",
+                    "sum(case when ivl < 21 then 1 else 0 end), -- yng\n" +
+                    "sum(case when ivl >= 21 then 1 else 0 end) -- mtr\n" +
+                    "from cards\n" +
+                    "where did in %s and queue in (2,3)\n" +
+                    "%s\n" +
+                    "group by day order by day",
                     mCol.getSched().getToday(), chunk, _limit(), lim);
             cur = mCol.getDb().getDatabase().rawQuery(query, null);
             while (cur.moveToNext()) {
@@ -288,7 +288,417 @@ public class OverviewStatsBuilder {
      */
 
     private String introductionGraph() {
-        return "";
+        Integer days = null;
+        Integer chunk = 0;
+        if (mType == Stats.AxisType.TYPE_MONTH) {
+            days = 30; chunk = 1;
+        } else if (mType == Stats.AxisType.TYPE_YEAR) {
+            days = 52; chunk = 7;
+        } else if (mType == Stats.AxisType.TYPE_LIFE) {
+            days = null; chunk = 30;
+        }
+        return _introductionGraph(_added(days, chunk), days, "Added");
+    }
+
+    private String _introductionGraph(List<int[]> data, int days, String title) {
+        if (data == null || data.size() == 0) {
+            return "";
+        }
+        List<int[]> d = data;
+        // TODO: skipped conf dict and related graph code
+        //graph
+        String txt = "";
+        // total and per day average
+        int tot = 0;
+        for (int[] i : d) {
+            tot += i[1];
+        }
+        Integer period = _periodDays();
+        if (period == null) {
+            // base off date of earliest card
+            period = _deckAge("add");
+        }
+        List<String> i = new ArrayList<>();
+        _line(i, "Total", String.format(Locale.getDefault(), "%d cards", tot));
+        _line(i, "Average", _avgDay(tot, period, "cards"));
+        txt += _lineTbl(i); // TODO: do we really want to table?
+        return txt;
+    }
+
+
+    private String repsGraph() {
+        Integer days = null;
+        Integer chunk = 0;
+        if (mType == Stats.AxisType.TYPE_MONTH) {
+            days = 30; chunk = 1;
+        } else if (mType == Stats.AxisType.TYPE_YEAR) {
+            days = 52; chunk = 7;
+        } else if (mType == Stats.AxisType.TYPE_LIFE) {
+            days = null; chunk = 30;
+        }
+        return _repsGraph(_done(days, chunk), days, "Review Count", "Review Time");
+    }
+
+
+    private String _repsGraph(List<double[]> data, Integer days, String reptitle, String timetitle) {
+        if (data == null || data.size() == 0) {
+            return "";
+        }
+        List<double[]> d = data;
+        // TODO: skipped charting and graphing stuff here
+        // conf = dict()
+        if (days != null) {
+            // conf[]
+        }
+
+        // reps
+        ArrayList<Object[]> spec = new ArrayList<>();
+        spec.add(new Object[]{3, colMature, "Mature"});
+        spec.add(new Object[]{2, colYoung, "Young"});
+        spec.add(new Object[]{4, colRelearn, "Relearn"});
+        spec.add(new Object[]{1, colLearn, "Learn"});
+        spec.add(new Object[]{5, colCram, "Cram"});
+        Object[] srd1 = _splitRepData(d, spec);
+        Object repdata = srd1[0];
+        List<double[]> repsum = (List<double[]>) srd1[1];
+
+        String txt = _title(reptitle, "The number of questions you have answered.");
+        // TODO: txt += plot stuff
+
+        int[] ds = _daysStudied();
+        int daysStud = ds[0];
+        int fstDay = ds[1];
+        Object[] ai1 = _ansInfo(repsum, daysStud, fstDay, "reviews");
+        String rep = (String) ai1[0];
+        int tot = (int) ai1[1];
+        txt += rep;
+
+        // time
+        spec = new ArrayList<>();
+        spec.add(new Object[]{8, colMature, "Mature"});
+        spec.add(new Object[]{7, colYoung, "Young"});
+        spec.add(new Object[]{9, colRelearn, "Relearn"});
+        spec.add(new Object[]{6, colLearn, "Learn"});
+        spec.add(new Object[]{10, colCram, "Cram"});
+        Object[] srd2 = _splitRepData(d, spec);
+        Object timdata = srd2[0];
+        List<double[]> timsum =  (List<double[]>) srd2[1];
+        String t;
+        boolean convHours;
+        if (mType == Stats.AxisType.TYPE_MONTH) {
+            t = "Minutes";
+            convHours = false;
+        } else {
+            t = "Hours";
+            convHours = true;
+        }
+        txt += _title(timetitle, "The time taken to answer the questions.");
+        // TODO: txt += plot stuff
+        Object[] ai2 = _ansInfo(timsum, daysStud, fstDay, "minutes", convHours, tot);
+        rep = (String) ai2[0];
+        int tot2 = (int) ai2[1];
+        txt += rep;
+        return txt;
+    }
+
+
+    private Object[] _ansInfo(List<double[]> totd, int studied, int first, String unit) {
+        return _ansInfo(totd, studied, first, unit, false, null);
+    }
+
+    private Object[] _ansInfo(List<double[]> totd, int studied, int first, String unit, boolean convHours,
+                              Integer total) {
+        if (totd == null || totd.size() == 0) {
+            return null;
+        }
+        double tot = totd.get(totd.size()-1)[1];
+        Integer period = _periodDays();
+        if (period == null) {
+            // base off earliest repetition date
+            period = _deckAge('review');
+        }
+        List<String> i = new ArrayList<>();
+        _line(i, "Days studied",
+                String.format(Locale.getDefault(),"<b>%d%%</b> (%s of %s)",
+                        studied/(float)period*100, studied, period), false);
+        String tunit;
+        if (convHours) {
+            tunit = "hours";
+        } else {
+            tunit = unit;
+        }
+        _line(i, "Total", String.format(Locale.getDefault(), "%s %s", (int) tot, tunit));
+        if (convHours) {
+            // convert to minutes
+            tot *= 60;
+        }
+        _line(i, "Average for days studied", _avgDay(tot, studied, unit));
+        if (studied != period) {
+            // don't display if you did study every day
+            _line(i, "If you studied every day", _avgDay(
+                    tot, period, unit));
+        }
+        if (total != null && total != 0 && tot != 0) {
+            float perMin = total / (float) tot;
+            perMin = (float) Math.round(perMin); // FIXME
+            // don't round down to zero
+            String text;
+            if (perMin < 0.1) {
+                text = "less than 0.1 cards/minute";
+            } else {
+                text = String.format(Locale.getDefault(), "%.01f cards/minute", perMin);
+            }
+            _line(i, "Average answer time",
+                    String.format(Locale.getDefault(), "%0.1fs (%s)", (tot*60)/total, text);
+        }
+        return new Object[]{_lineTbl(i), (int) tot}; // TODO: do we tablize?
+    }
+
+    private Object[] _splitRepData(List<double[]> data, List<Object[]> spec) {
+        Map<Integer, List<double[]>> sep = new HashMap();
+        Map<Integer, Double> totcnt = new HashMap();
+        Map<Integer, List<double[]>> totd = new HashMap();
+        List<double[]> alltot = new ArrayList<>();
+        int allcnt = 0;
+        for (Object[] s : spec) {
+            Integer n = (Integer) s[0];
+            totcnt.put(n, 0.0);
+            totd.put(n, new ArrayList<double[]>());
+        }
+        List<Integer> sum = new ArrayList<>();
+        for (double[] row : data) {
+            for (Object[] s : spec) {
+                Integer n = (Integer) s[0];
+                if (!sep.containsKey(n)) {
+                    sep.put(n, new ArrayList<double[]>());
+                }
+                sep.get(n).add(new double[]{row[0], row[n]});
+                totcnt.put(n, totcnt.get(n) + row[n]);
+                allcnt += row[n];
+                totd.get(n).add(new double[]{row[0], totcnt.get(n)});
+            }
+            alltot.add(new double[]{row[0], allcnt});
+        }
+        List<Object[]> ret = new ArrayList<>();
+        for (Object[] s : spec) {
+            Integer n = (Integer) s[0];
+            String col = (String) s[1];
+            String lab = (String) s[2];
+            if (totd.get(n).size() > 0 && totcnt.containsKey(n)) {
+                // bars
+                ret.add(null);
+                // lines
+                ret.add(null);
+            }
+        }
+        return new Object[] {ret, alltot};
+    }
+
+
+    private List<int[]> _added() {
+        return _added(7, 1);
+    }
+
+    private List<int[]> _added(Integer num, Integer chunk) {
+        List<String> lims = new ArrayList<>();
+        if (num != null) {
+            lims.add(String.format(Locale.US, "id > %d",
+                    (mCol.getSched().getDayCutoff()-(num*chunk*86400))*1000));
+        }
+        lims.add(String.format(Locale.US, "did in %s", _limit()));
+        String lim;
+        if (lims.size() > 0) {
+            lim = "where " + TextUtils.join(" and ", lims);
+        } else {
+            lim = "";
+        }
+        double tf;
+        if (mType == Stats.AxisType.TYPE_MONTH) {
+            tf = 60.0; // minutes
+        } else {
+            tf = 3600.0; // hours
+        }
+        Cursor cur = null;
+        List<int[]> d = new ArrayList<>();
+        try {
+            String query;
+            query = String.format(Locale.US,
+                    "select\n" +
+                    "(cast((id/1000.0 - %d) / 86400.0 as int))/%d as day,\n" +
+                    "count(id)\n" +
+                    "from cards %s\n" +
+                    "group by day order by day",
+                    mCol.getSched().getDayCutoff(), chunk, lim);
+            cur = mCol.getDb().getDatabase().rawQuery(query, null);
+            while (cur.moveToNext()) {
+                d.add(new int[]{cur.getInt(0), cur.getInt(1)});
+            }
+            return d;
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+        }
+    }
+
+
+    private List<double[]> _done(Integer num, Integer chunk) {
+        List<String> lims = new ArrayList<>();
+        if (num != null) {
+            lims.add(String.format(Locale.US, "id > %d",
+                    (mCol.getSched().getDayCutoff()-(num*chunk*86400))*1000));
+        }
+        String lim = _revlogLimit();
+        if (!TextUtils.isEmpty(lim)) {
+            lims.add(lim);
+        }
+        if (lims.size() > 0) {
+            lim = "where " + TextUtils.join(" and ", lims);
+        } else {
+            lim = "";
+        }
+        double tf;
+        if (mType == Stats.AxisType.TYPE_MONTH) {
+            tf = 60.0; // minutes
+        } else {
+            tf = 3600.0; //hours
+        }
+        String query = String.format(Locale.US,
+                "select\n" +
+                        "(cast((id/1000.0 - %d) / 86400.0 as int))/%d as day,\n" +
+                        "sum(case when type = 0 then 1 else 0 end), -- lrn count\n" +
+                        "sum(case when type = 1 and lastIvl < 21 then 1 else 0 end), -- yng count\n" +
+                        "sum(case when type = 1 and lastIvl >= 21 then 1 else 0 end), -- mtr count\n" +
+                        "sum(case when type = 2 then 1 else 0 end), -- lapse count\n" +
+                        "sum(case when type = 3 then 1 else 0 end), -- cram count\n" +
+                        "sum(case when type = 0 then time/1000.0 else 0 end)/%f, -- lrn time\n" +
+                        "-- yng + mtr time\n" +
+                        "sum(case when type = 1 and lastIvl < 21 then time/1000.0 else 0 end)/%f,\n" +
+                        "sum(case when type = 1 and lastIvl >= 21 then time/1000.0 else 0 end)/%f,\n" +
+                        "sum(case when type = 2 then time/1000.0 else 0 end)/%f, -- lapse time\n" +
+                        "sum(case when type = 3 then time/1000.0 else 0 end)/%f -- cram time\n" +
+                        "from revlog %s\n" +
+                        "group by day order by day",
+                mCol.getSched().getDayCutoff(), chunk, tf, tf, tf, tf, tf, lim);
+        List<double[]> result = new ArrayList<>();
+        Cursor cur = null;
+        try {
+            cur = mCol.getDb().getDatabase().rawQuery(query, null);
+            while (cur.moveToNext()) {
+                result.add(new double[]{
+                        cur.getDouble(0), cur.getDouble(1), cur.getDouble(2),
+                        cur.getDouble(3), cur.getDouble(4), cur.getDouble(5),
+                        cur.getDouble(6), cur.getDouble(7), cur.getDouble(8),
+                        cur.getDouble(9), cur.getDouble(10)});
+            }
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+        }
+        return result;
+    }
+
+
+    private int[] _daysStudied() {
+        List<String> lims = new ArrayList<>();
+        Integer num = _periodDays();
+        if (num != null) {
+            lims.add(String.format(Locale.US,
+                    "id > %d",
+                    ((mCol.getSched().getDayCutoff()-(num*86400))*1000)));
+        }
+        String rlim = _revlogLimit();
+        String lim;
+        if (!TextUtils.isEmpty(rlim)) {
+            lims.add(rlim);
+        }
+        if (lims.size() > 0) {
+            lim = "where " + TextUtils.join(" and ", lims);
+        } else {
+            lim = "";
+        }
+        String query = String.format(Locale.US,
+                "select count(), abs(min(day)) from (select\n" +
+                        "(cast((id/1000 - %d) / 86400.0 as int)+1) as day\n" +
+                        "from revlog %s\n" +
+                        "group by day order by day)",
+                mCol.getSched().getDayCutoff(), lim);
+        Cursor cur = null;
+        try {
+            cur = mCol.getDb().getDatabase().rawQuery(query, null);
+            if (cur.moveToFirst()) {
+                return new int[] {cur.getInt(0), cur.getInt(1)};
+            } else {
+                return new int[] {0, 0};
+            }
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+        }
+    }
+
+
+    /**
+     * Intervals
+     * ***********************************************************
+     */
+
+    private String ivlGraph() {
+        List<Object> i = _ivls();
+        List<int[]> ivls = (List<int[]>) i.get(0);
+        int all = (int) i.get(1);
+        float avg = (float) i.get(2);
+        int max = (int) i.get(3);
+
+        if (ivls.size() == 0 || all == 0) {
+            
+        }
+
+    }
+
+    private List<Object> _ivls() {
+        Integer chunk = 0;
+        String lim;
+        if (mType == Stats.AxisType.TYPE_MONTH) {
+            chunk = 1; lim = " and grp <= 30";
+        } else if (mType == Stats.AxisType.TYPE_YEAR) {
+            chunk = 7; lim = " and grp <= 52";
+        } else (mType == Stats.AxisType.TYPE_LIFE) {
+            chunk = 30; lim = "";
+        }
+        List<Object> data = new ArrayList<>();
+        Cursor cur = null;
+        Cursor cur2 = null;
+        try {
+            cur = mCol.getDb().getDatabase().rawQuery(String.format(Locale.US,
+                    "select ivl / %d as grp, count() from cards\n" +
+                    "where did in %s and queue = 2 %s\n" +
+                    "group by grp\n" +
+                    "order by grp",
+                    chunk, _limit(), lim), null);
+            List<int[]> list = new ArrayList<>();
+            while (cur.moveToNext()) {
+                list.add(new int[]{cur.getInt(0), cur.getInt(1)});
+            }
+            cur2 = mCol.getDb().getDatabase().rawQuery(String.format(Locale.US,
+                    "select count(), avg(ivl), max(ivl) from cards where did in %s and queue = 2",
+                    _limit()), null);
+            cur.moveToFirst();
+            data.add(list);
+            data.add(cur.getInt(0));
+            data.add(cur.getFloat(1));
+            data.add(cur.getInt(2));
+            return data;
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+            if (cur2 != null && !cur2.isClosed()) {
+                cur2.close();
+            }
+        }
     }
 
     public String portMe() {
@@ -428,263 +838,10 @@ public class OverviewStatsBuilder {
     }
 
 
-    private String repsGraphForOverview() {
-        Integer days = null;
-        Integer chunk = 0;
-        switch (mType) {
-            case TYPE_MONTH:
-                days = 30; chunk = 1;
-                break;
-            case TYPE_YEAR:
-                days = 52; chunk = 7;
-                break;
-            case TYPE_LIFE:
-                days = null; chunk = 30;
-                break;
-        }
-        List<double[]> data = _done(days, chunk);
-        if (data.size() == 0) {
-            return "";
-        }
-        List<double[]> d = data;
-        // conf = dict()
-        if (days != null) {
-            // conf[]
-        }
-        // reps
-        ArrayList<Object[]> spec = new ArrayList<>();
-        spec.add(new Object[]{3, colMature, "Mature"});
-        spec.add(new Object[]{2, colYoung, "Young"});
-        spec.add(new Object[]{4, colRelearn, "Relearn"});
-        spec.add(new Object[]{1, colLearn, "Learn"});
-        spec.add(new Object[]{5, colCram, "Cram"});
-        Object[] srd1 = _splitRepData(d, spec);
-        Object repdata = srd1[0];
-        List<double[]> repsum = (List<double[]>) srd1[1];
-        // txt = title stuff
-        // txt = plot stuff
 
-        int[] ds = _daysStudied();
-        int daysStud = ds[0];
-        int fstDay = ds[1];
-        Object[] ai1 = _ansInfo(repsum, daysStud, fstDay, "reviews");
-        String rep = (String) ai1[0];
-        int tot = (int) ai1[1];
-        // txt = final rep stuff
 
-        // time
-        spec = new ArrayList<>();
-        spec.add(new Object[]{8, colMature, "Mature"});
-        spec.add(new Object[]{7, colYoung, "Young"});
-        spec.add(new Object[]{9, colRelearn, "Relearn"});
-        spec.add(new Object[]{6, colLearn, "Learn"});
-        spec.add(new Object[]{10, colCram, "Cram"});
-        Object[] srd2 = _splitRepData(d, spec);
-        Object timdata = srd2[0];
-        List<double[]> timsum =  (List<double[]>) srd2[1];
-        String t;
-        boolean convHours;
-        if (mType == Stats.AxisType.TYPE_MONTH) {
-            t = "minutes";
-            convHours = false;
-        } else {
-            t = "hours";
-            convHours = true;
-        }
-        // txt = title stuff
-        // txt = plot stuff
-        Object[] ai2 = _ansInfo(timsum, daysStud, fstDay, "minutes", convHours, tot);
-        // txt = final rep stuff
-        return "";
-    }
 
-    private Object[] _ansInfo(List<double[]> totd, int studied, int first, String unit) {
-        return _ansInfo(totd, studied, first, unit, false, null);
-    }
 
-    private Object[] _ansInfo(List<double[]> totd, int studied, int first, String unit, boolean convHours,
-                              Integer total) {
-        if (totd == null || totd.size() == 0) {
-            return null;
-        }
-
-        double tot = totd.get(totd.size()-1)[1];
-        Integer period = _periodDays();
-        if (period == null) {
-            // base off earliest repetition date
-            //period = _deckAge('review'); // TODO
-        }
-        // _line()
-        String tunit;
-        if (convHours) {
-            tunit = "hours";
-        } else {
-            tunit = unit;
-        }
-        // _line()
-        if (convHours) {
-            // convert to minutes
-            tot *= 60;
-        }
-        // _line()
-        if (studied != period) {
-            // don't display if you did study every day
-            // _line()
-        }
-
-        if (total != null && total != 0 && tot != 0) {
-            float perMin = total / (float) tot;
-            perMin = (float) Math.round(period); // FIXME
-            // don't round down to zero
-            if (perMin < 0.1) {
-                // text =
-            } else {
-                // text =
-            }
-            // _line()
-        }
-
-        return new Object[]{"", (int) tot};
-    }
-
-    /**
-     * @return (ret, alltot)
-     */
-    private Object[] _splitRepData(List<double[]> data, List<Object[]> spec) {
-        Map<Integer, List<double[]>> sep = new HashMap();
-        Map<Integer, Double> totcnt = new HashMap();
-        Map<Integer, List<double[]>> totd = new HashMap();
-        List<double[]> alltot = new ArrayList<>();
-        int allcnt = 0;
-        for (Object[] s : spec) {
-            Integer n = (Integer) s[0];
-            totcnt.put(n, 0.0);
-            totd.put(n, new ArrayList<double[]>());
-        }
-        List<Integer> sum = new ArrayList<>();
-        for (double[] row : data) {
-            for (Object[] s : spec) {
-                Integer n = (Integer) s[0];
-                if (!sep.containsKey(n)) {
-                    sep.put(n, new ArrayList<double[]>());
-                }
-                sep.get(n).add(new double[]{row[0], row[n]});
-                totcnt.put(n, totcnt.get(n) + row[n]);
-                allcnt += row[n];
-                totd.get(n).add(new double[]{row[0], totcnt.get(n)});
-            }
-            alltot.add(new double[]{row[0], allcnt});
-        }
-        List<Object[]> ret = new ArrayList<>();
-        for (Object[] s : spec) {
-            Integer n = (Integer) s[0];
-            String col = (String) s[1];
-            String lab = (String) s[2];
-            if (totd.get(n).size() > 0 && totcnt.containsKey(n)) {
-                // bars
-                ret.add(null);
-                // lines
-                ret.add(null);
-            }
-        }
-        return new Object[] {ret, alltot};
-    }
-
-    private List<double[]> _done(Integer num, Integer chunk) {
-        List<String> lims = new ArrayList<>();
-        if (num != null) {
-            lims.add(String.format(Locale.US, "id > %d",
-                    (mCol.getSched().getDayCutoff()-(num*chunk*86400))*1000));
-        }
-        String lim = _revlogLimit();
-        if (!TextUtils.isEmpty(lim)) {
-            lims.add(lim);
-        }
-        if (lims.size() > 0) {
-            lim = "where " + TextUtils.join(" and ", lims);
-        } else {
-            lim = "";
-        }
-        double tf;
-        if (mType == Stats.AxisType.TYPE_MONTH) {
-            tf = 60.0; // minutes
-        } else {
-            tf = 3600.0; //hours
-        }
-        String query = String.format(Locale.US,
-                "select\n" +
-                "(cast((id/1000.0 - %d) / 86400.0 as int))/%d as day,\n" +
-                "sum(case when type = 0 then 1 else 0 end), -- lrn count\n" +
-                "sum(case when type = 1 and lastIvl < 21 then 1 else 0 end), -- yng count\n" +
-                "sum(case when type = 1 and lastIvl >= 21 then 1 else 0 end), -- mtr count\n" +
-                "sum(case when type = 2 then 1 else 0 end), -- lapse count\n" +
-                "sum(case when type = 3 then 1 else 0 end), -- cram count\n" +
-                "sum(case when type = 0 then time/1000.0 else 0 end)/%f, -- lrn time\n" +
-                "-- yng + mtr time\n" +
-                "sum(case when type = 1 and lastIvl < 21 then time/1000.0 else 0 end)/%f,\n" +
-                "sum(case when type = 1 and lastIvl >= 21 then time/1000.0 else 0 end)/%f,\n" +
-                "sum(case when type = 2 then time/1000.0 else 0 end)/%f, -- lapse time\n" +
-                "sum(case when type = 3 then time/1000.0 else 0 end)/%f -- cram time\n" +
-                "from revlog %s\n" +
-                "group by day order by day",
-                mCol.getSched().getDayCutoff(), chunk, tf, tf, tf, tf, tf, lim);
-        List<double[]> result = new ArrayList<>();
-        Cursor cur = null;
-        try {
-            cur = mCol.getDb().getDatabase().rawQuery(query, null);
-            while (cur.moveToNext()) {
-                result.add(new double[]{
-                        cur.getDouble(0), cur.getDouble(1), cur.getDouble(2),
-                        cur.getDouble(3), cur.getDouble(4), cur.getDouble(5),
-                        cur.getDouble(6), cur.getDouble(7), cur.getDouble(8),
-                        cur.getDouble(9), cur.getDouble(10)});
-            }
-        } finally {
-            if (cur != null && !cur.isClosed()) {
-                cur.close();
-            }
-        }
-        return result;
-    }
-
-    private int[] _daysStudied() {
-        List<String> lims = new ArrayList<>();
-        Integer num = _periodDays();
-        if (num != null) {
-            lims.add(String.format(Locale.US,
-                    "id > %d",
-                    ((mCol.getSched().getDayCutoff()-(num*86400))*1000)));
-        }
-        String rlim = _revlogLimit();
-        String lim;
-        if (!TextUtils.isEmpty(rlim)) {
-            lims.add(rlim);
-        }
-        if (lims.size() > 0) {
-            lim = "where " + TextUtils.join(" and ", lims);
-        } else {
-            lim = "";
-        }
-        String query = String.format(Locale.US,
-                "select count(), abs(min(day)) from (select\n" +
-                "(cast((id/1000 - %d) / 86400.0 as int)+1) as day\n" +
-                "from revlog %s\n" +
-                "group by day order by day)",
-                mCol.getSched().getDayCutoff(), lim);
-        Cursor cur = null;
-        try {
-            cur = mCol.getDb().getDatabase().rawQuery(query, null);
-            if (cur.moveToFirst()) {
-                return new int[] {cur.getInt(0), cur.getInt(1)};
-            } else {
-                return new int[] {0, 0};
-            }
-        } finally {
-            if (cur != null && !cur.isClosed()) {
-                cur.close();
-            }
-        }
-    }
 
     private String _limit() {
         if (mWholeCollection) {
