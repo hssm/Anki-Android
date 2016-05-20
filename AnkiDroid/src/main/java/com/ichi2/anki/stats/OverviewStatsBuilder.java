@@ -16,21 +16,20 @@
 package com.ichi2.anki.stats;
 
 
-import android.content.res.Resources;
 import android.database.Cursor;
 import android.text.TextUtils;
 import android.webkit.WebView;
 
-import com.ichi2.anki.R;
 import com.ichi2.libanki.Collection;
 import com.ichi2.libanki.Stats;
 import com.ichi2.libanki.Utils;
-import com.ichi2.themes.Themes;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -46,8 +45,7 @@ public class OverviewStatsBuilder {
     private static final int FILT_INDEX = 6;
     private static final int MCNT_INDEX = 7;
     private static final int MSUM_INDEX = 8;
-
-    private final WebView mWebView; //for resources access
+    
     private final Collection mCol;
     private final boolean mWholeCollection;
     private final Stats.AxisType mType;
@@ -420,7 +418,7 @@ public class OverviewStatsBuilder {
         List<String> i = new ArrayList<>();
         _line(i, "Days studied",
                 String.format(Locale.getDefault(),"<b>%d%%</b> (%s of %s)",
-                        studied/(float)period*100, studied, period), false);
+                        studied / (float) period * 100, studied, period), false);
         String tunit;
         if (convHours) {
             tunit = "hours";
@@ -701,146 +699,345 @@ public class OverviewStatsBuilder {
         }
     }
 
-    public String portMe() {
 
-        int textColorInt = Themes.getColorFromAttr(mWebView.getContext(), android.R.attr.textColor);
-        String textColor = String.format("#%06X", (0xFFFFFF & textColorInt)); // Color to hex string
-
-        String css = "<style>\n" +
-                "h1, h3 { margin-bottom: 0; margin-top: 1em; text-transform: capitalize; }\n" +
-                ".pielabel { text-align:center; padding:0px; color:white; }\n" +
-                "body {color:" + textColor + ";}\n" +
-                "</style>";
-
-        StringBuilder stringBuilder = new StringBuilder();
-        stringBuilder.append("<center>");
-        stringBuilder.append(css);
-        appendTodaysStats(stringBuilder);
-
-        appendOverViewStats(stringBuilder);
-
-        stringBuilder.append("</center>");
-        return stringBuilder.toString();
+    private String easeGraph() {
+        // 3 + 4 + 4 + spaces on sides and middle = 15
+        // yng starts at 1+3+1 = 5
+        // mtr starts at 5+4+1 = 10
+        Map<String, List<int[]>> d = new HashMap<>();
+        d.put("lrn", new ArrayList<int[]>());
+        d.put("yng", new ArrayList<int[]>());
+        d.put("mtr", new ArrayList<int[]>());
+        String[] types = new String[] {"lrn", "yng", "mtr"};
+        List<int[]> eases = _eases();
+        for (int[] i : eases) {
+            int type = i[0];
+            int ease = i[1];
+            int cnt = i[2];
+            if (type == 1) {
+                ease += 5;
+            } else if (type == 2) {
+                ease += 10;
+            }
+            String n = types[type];
+            d.get(n).add(new int[]{ease, cnt});
+        }
+        int[][] ticks = new int[][]{{1,1},{2,2},{3,3},
+                                    {6,1},{7,2},{8,3},{9,4},
+                                    {11, 1},{12,2},{13,3},{14,4}};
+        String txt = _title("Answer Buttons", "The number of times you have pressed each button.");
+        // txt = graph stuff TODO
+        txt += _easeInfo(eases);
+        return txt;
     }
 
-    private void appendOverViewStats(StringBuilder stringBuilder) {
-        Stats stats = new Stats(mCol, mWholeCollection);
-
-        stats.calculateOverviewStatistics(mType, mOStats);
-        Resources res = mWebView.getResources();
-
-        stringBuilder.append(_title(res.getString(mType.descriptionId)));
-
-        boolean allDaysStudied = mOStats.daysStudied == mOStats.allDays;
-        String daysStudied = res.getString(R.string.stats_overview_days_studied,
-                (int) ((float) mOStats.daysStudied / (float) mOStats.allDays * 100),
-                mOStats.daysStudied, mOStats.allDays);
-
-
-        // FORECAST
-        // Fill in the forecast summaries first
-        dueGraphForOverview();
-
-        stringBuilder.append(_subtitle(res.getString(R.string.stats_forecast).toUpperCase()));
-        stringBuilder.append(res.getString(R.string.stats_overview_forecast_total, mOStats.forecastTotalReviews));
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_forecast_average, mOStats.forecastAverageReviews));
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_forecast_due_tomorrow, mOStats.forecastDueTomorrow));
-
-        stringBuilder.append("<br>");
-
-        // Fill in the reps summaries first
-        repsGraphForOverview();
-        // REVIEW COUNT
-        stringBuilder.append(_subtitle(res.getString(R.string.stats_review_count).toUpperCase()));
-        stringBuilder.append(daysStudied);
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_total_reviews, mOStats.totalReviews));
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_reviews_per_day_studydays, mOStats.reviewsPerDayOnStudyDays));
-        if (!allDaysStudied) {
-            stringBuilder.append("<br>");
-            stringBuilder.append(res.getString(R.string.stats_overview_reviews_per_day_all, mOStats.reviewsPerDayOnAll));
+    private String _easeInfo(List<int[]> eases) {
+        Map<Integer, int[]> types = new HashMap<>();
+        types.put(0, new int[]{0, 0});
+        types.put(1, new int[]{0, 0});
+        types.put(2, new int[]{0, 0});
+        List<String> i = new ArrayList<>();
+        for (int[] e : eases) {
+            int type = e[0];
+            int ease = e[1];
+            int cnt = e[2];
+            int bad = types.get(type)[0];
+            int good = types.get(type)[1];
+            int tot = bad + good;
+            float pct = good / (float) tot * 100;
+            if (pct == Float.NaN) {
+                pct = 0;
+            }
+            i.add(String.format(Locale.getDefault(),
+                    "Correct: <b>%0.2f%%</b><br>(d of %d)",
+                    pct, good, tot));
+            return TextUtils.join("<br>", i); // TODO: do the proper table thing
         }
-
-        stringBuilder.append("<br>");
-
-        //REVIEW TIME
-        stringBuilder.append(_subtitle(res.getString(R.string.stats_review_time).toUpperCase()));
-        stringBuilder.append(daysStudied);
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_total_reviews_minutes, mOStats.reviewsTotalMinutes)); // TODO
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_time_per_day_studydays, mOStats.timePerDayOnStudyDays));
-        if (!allDaysStudied) {
-            stringBuilder.append("<br>");
-            stringBuilder.append(res.getString(R.string.stats_overview_time_per_day_all, mOStats.timePerDayOnAll));
-        }
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_average_answer_time, mOStats.reviewsAverageMinutes)); // TODO
-        stringBuilder.append("<br>");
-
-        // ADDED
-        stringBuilder.append(_subtitle(res.getString(R.string.stats_added).toUpperCase()));
-        stringBuilder.append(res.getString(R.string.stats_overview_total_new_cards, mOStats.totalNewCards));
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_new_cards_per_day, mOStats.newCardsPerDay));
-
-        stringBuilder.append("<br>");
-
-        // INTERVALS
-        stringBuilder.append(_subtitle(res.getString(R.string.stats_review_intervals).toUpperCase()));
-        stringBuilder.append(res.getString(R.string.stats_overview_average_interval));
-        stringBuilder.append(Utils.roundedTimeSpan(mWebView.getContext(), (int) Math.round(mOStats.averageInterval * Stats.SECONDS_PER_DAY)));
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_overview_longest_interval));
-        stringBuilder.append(Utils.roundedTimeSpan(mWebView.getContext(), (int) Math.round(mOStats.longestInterval * Stats.SECONDS_PER_DAY)));
+        return "";
     }
 
-    private void appendTodaysStats(StringBuilder stringBuilder) {
-        Stats stats = new Stats(mCol, mWholeCollection);
-        int[] todayStats = stats.calculateTodayStats();
-        stringBuilder.append(_title(mWebView.getResources().getString(R.string.stats_today)));
-        Resources res = mWebView.getResources();
-        final int minutes = (int) Math.round(todayStats[THETIME_INDEX] / 60.0);
-        final String span = res.getQuantityString(R.plurals.time_span_minutes, minutes, minutes);
-        stringBuilder.append(res.getQuantityString(R.plurals.stats_today_cards,
-                todayStats[CARDS_INDEX], todayStats[CARDS_INDEX], span));
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_today_again_count, todayStats[FAILED_INDEX]));
-        if (todayStats[CARDS_INDEX] > 0) {
-            stringBuilder.append(" ");
-            stringBuilder.append(res.getString(R.string.stats_today_correct_count, (((1 - todayStats[FAILED_INDEX] / (float) (todayStats[CARDS_INDEX])) * 100.0))));
+
+    private List<int[]> _eases() {
+        List<String> lims = new ArrayList<>();
+        String lim = _revlogLimit();
+        if (!TextUtils.isEmpty(lim)) {
+            lims.add(lim);
         }
-        stringBuilder.append("<br>");
-        stringBuilder.append(res.getString(R.string.stats_today_type_breakdown, todayStats[LRN_INDEX], todayStats[REV_INDEX], todayStats[RELRN_INDEX], todayStats[FILT_INDEX]));
-        stringBuilder.append("<br>");
-        if (todayStats[MCNT_INDEX] != 0) {
-            stringBuilder.append(res.getString(R.string.stats_today_mature_cards, todayStats[MSUM_INDEX], todayStats[MCNT_INDEX], (todayStats[MSUM_INDEX] / (float) (todayStats[MCNT_INDEX]) * 100.0)));
+        Integer days;
+        if (mType == Stats.AxisType.TYPE_MONTH) {
+            days = 30;
+        } else if (mType == Stats.AxisType.TYPE_YEAR) {
+            days = 365;
         } else {
-            stringBuilder.append(res.getString(R.string.stats_today_no_mature_cards));
+            days = null;
+        }
+        if (days != null) {
+            lims.add(String.format(Locale.US, "id > %d",
+                    (mCol.getSched().getDayCutoff()-(days*86400))*1000));
+        }
+        if (lims.size() > 0) {
+            lim = "where " + TextUtils.join(" and ", lims);
+        } else {
+            lim = "";
+        }
+        String query = String.format(Locale.US,
+                "select (case\n" +
+                "when type in (0,2) then 0\n" +
+                "when lastIvl < 21 then 1\n" +
+                "else 2 end) as thetype,\n" +
+                "(case when type in (0,2) and ease = 4 then 3 else ease end), count() from revlog %s\n" +
+                "group by thetype, ease\n" +
+                "order by thetype, ease", lim);
+        Cursor cur = null;
+        List<int[]> results = new ArrayList<>();
+        try {
+            cur = mCol.getDb().getDatabase().rawQuery(query, null);
+            while (cur.moveToNext()) {
+                results.add(new int[]{cur.getInt(0), cur.getInt(1), cur.getInt(2)});
+            }
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+        }
+        return results;
+    }
+
+
+    /**
+     * Hourly retention
+     * ***********************************************************
+     */
+
+    private String hourGraph() {
+        List<int[]> data = _hourRet();
+        if (data.size() == 0) {
+            return "";
+        }
+        List<int[]> shifted = new ArrayList<>();
+        List<int[]> counts = new ArrayList<>();
+        int mcount = 0;
+        List<float[]> trend = new ArrayList<>();
+        int peak = 0;
+        for (int[] d : data) {
+            int hour = (d[0] - 4) % 24;
+            int pct = d[1];
+            if (pct > peak) {
+                peak = pct;
+            }
+            shifted.add(new int[]{hour, pct});
+            counts.add(new int[]{hour, d[2]});
+            if (d[2] > mcount) {
+                mcount = d[2];
+            }
+        }
+        // TODO: need to sort the lists with custom comparator
+        // shifted.sort()
+        // counts.sort()
+        if (counts.size() < 4) {
+            return "";
+        }
+        for (int[] d : shifted) {
+            int hour = d[0];
+            int pct = d[1];
+            if (trend.size() == 0) {
+                trend.add(new float[]{hour, pct});
+            } else {
+                float prev = trend.get(trend.size() - 1)[1];
+                float diff = pct-prev;
+                diff /= 3.0;
+                diff = Math.round(diff); // TODO: rounding to n digits?
+                trend.add(new float[]{hour, prev+diff});
+            }
+        }
+        String txt = _title("Hourly Breakdown",
+                            "Review success rate for each hour of the day.");
+        // TODO: graphing txt +=
+        txt += "Hours with less than 30 reviews are not shown.";
+        return txt;
+    }
+
+
+    public List<int[]> _hourRet() {
+        String lim = _revlogLimit();
+        if (!TextUtils.isEmpty(lim)) {
+            lim = " and " + lim;
+        }
+        // TODO: is this correct? do we need to x1000 ?
+        Date sd = new Date(mCol.getCrt());
+
+        Integer pd = _periodDays();
+        if (pd != null) {
+            lim += String.format(Locale.US, " and id > %d",
+                    (mCol.getSched().getDayCutoff()-(86400*pd))*1000);
+        }
+        String query = String.format(Locale.US,
+                "select\n" +
+                "23 - ((cast((%d - id/1000) / 3600.0 as int)) %% 24) as hour,\n" +
+                "sum(case when ease = 1 then 0 else 1 end) /\n" +
+                "cast(count() as float) * 100,\n" + // TODO: is this a float? does it matter?
+                "count()\n" +
+                "from revlog where type in (0,1,2) %s\n" +
+                "group by hour having count() > 30 order by hour",
+                mCol.getSched().getDayCutoff()-(sd.getHours()*3600), lim); // TODO: deprecated?
+        Cursor cur = null;
+        List<int[]> results = new ArrayList<>();
+        try {
+            cur = mCol.getDb().getDatabase().rawQuery(query, null);
+            while (cur.moveToNext()) {
+                results.add(new int[]{cur.getInt(0), cur.getInt(1), cur.getInt(2), cur.getInt(3)});
+            }
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+        }
+        return results;
+    }
+
+
+    /**
+     * Cards
+     * ***********************************************************
+     */
+
+    private String cardGraph() {
+        // graph data
+        List<int[]> div = _cards();
+        // TODO: skipped huge block for graphing data
+        // text data
+        List<String> i = new ArrayList<>();
+        Cursor cur = null;
+        String query = String.format(Locale.US,
+                        "select count(id), count(distinct nid) from cards\n" +
+                        "where did in %s ", _limit());
+        try {
+            cur = mCol.getDb().getDatabase().rawQuery(query, null);
+            cur.moveToFirst();
+            int c = cur.getInt(0);
+            int f = cur.getInt(1);
+            _line(i, "Total cards", c);
+            _line(i, "Total notes", f);
+            float[] f = _factors();
+            float low = f[0];
+            float avg = f[1];
+            float high = f[2];
+            if (low > 0) {
+                _line(i, "Lowest ease", String.format(Locale.getDefault(), "%d%%", low));
+                _line(i, "Average ease", String.format(Locale.getDefault(), "%d%%", avg));
+                _line(i, "Highest ease", String.format(Locale.getDefault(), "%d%%", high));
+            }
+            String info = TextUtils.join("", i); // TODO: do we do table stuff?
+            info += "A card's <i>ease</i> is the size of the next interval \n" +
+                    "when you answer \"good\" on a review.";
+            String txt = _title("Cards Types", "The division of cards in your deck(s)");
+            // TODO: txt = graph stuff
+            return txt + info;
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+        }
+        return "";
+    }
+
+    private void _line(List<String> i, String a, String b) {
+        _line(i, a, b, true);
+    }
+
+    private void _line(List<String> i, String a, String b, boolean bold) {
+        String colon = ":";
+        if (bold) {
+            i.add(String.format(Locale.getDefault(),
+                    "<tr><td width=200 align=right>%s%s</td><td><b>%s</b></td></tr>", a, colon, b));
+        } else {
+            i.add(String.format(Locale.getDefault(),
+                    "<tr><td width=200 align=right>%s%s</td><td>%s</td></tr>", a, colon, b));
         }
     }
 
 
-    private String _title(String title) {
-        return _title(title, "");
-    }
-
-    private String _title(String title, String subtitle) {
-        return String.format(Locale.getDefault(), "<h1>%s</h1>%s", title, subtitle);
+    private String _lineTbl(List<String> i) {
+        return "<table width=400>" + TextUtils.join("", i) + "</table>";
     }
 
 
-    private String _subtitle(String title) {
-        return "<h3>" + title + "</h3>";
+    private float[] _factors() {
+        String query = String.format(Locale.US,
+                "select\n" +
+                "min(factor) / 10.0,\n" +
+                "avg(factor) / 10.0,\n" +
+                "max(factor) / 10.0\n" +
+                "from cards where did in %s and queue = 2", _limit());
+        Cursor cur = null;
+        try {
+            cur = mCol.getDb().getDatabase().rawQuery(query, null);
+            cur.moveToFirst();
+            return new float[] {cur.getFloat(0), cur.getFloat(1),cur.getFloat(2) };
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+        }
     }
 
 
+    private List<int[]> _cards() {
+        String query = String.format(Locale.US,
+                "select\n" +
+                "sum(case when queue=2 and ivl >= 21 then 1 else 0 end), -- mtr\n" +
+                "sum(case when queue in (1,3) or (queue=2 and ivl < 21) then 1 else 0 end), -- yng/lrn\n" +
+                "sum(case when queue=0 then 1 else 0 end), -- new\n" +
+                "sum(case when queue<0 then 1 else 0 end) -- susp\n" +
+                "from cards where did in %s", _limit());
+        Cursor cur = null;
+        List<int[]> results = new ArrayList<>();
+        try {
+            cur = mCol.getDb().getDatabase().rawQuery(query, null);
+            while (cur.moveToNext()) {
+                results.add(new int[]{cur.getInt(0), cur.getInt(1), cur.getInt(2), cur.getInt(3)});
+            }
+        } finally {
+            if (cur != null && !cur.isClosed()) {
+                cur.close();
+            }
+        }
+        return results;
+    }
 
 
+    /**
+     * Footer
+     * ***********************************************************
+     */
 
+    private String footer() {
+        String b = "<br><br><font size=1>";
+        b += String.format(Locale.getDefault(), "Generated on %s",
+                new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date())); // TODO: get proper time
+        b += "<br>";
+        String deck;
+        if (mWholeCollection) {
+            deck = "Whole collection";
+        } else {
+            deck = mCol.getDecks().current().optString("name", "");
+        }
+        b += String.format(Locale.getDefault(), "Scope: %s", deck);
+        b += "<br>";
+        b += String.format(Locale.getDefault(), "Period: %s",
+                new String[]{"1 month", "1 year", "deck life"}[mType.ordinal()]);
+        return b;
+    }
+
+    /**
+     * Tools
+     * ***********************************************************
+     */
+
+    // TODO: we probably won't use this?
+    private String _graph(){
+        return "";
+    }
 
 
     private String _limit() {
@@ -868,6 +1065,40 @@ public class OverviewStatsBuilder {
     }
 
 
+    private String _title(String title) {
+        return _title(title, "");
+    }
+
+
+    private String _title(String title, String subtitle) {
+        return String.format(Locale.getDefault(), "<h1>%s</h1>%s", title, subtitle);
+    }
+
+
+    private int _deckAge(String by) {
+        String lim = _revlogLimit();
+        if (!TextUtils.isEmpty(lim)) {
+            lim = " where " + lim;
+        }
+        int t = 0;
+        if (by.equals("review")) {
+            t = mCol.getDb().queryScalar(String.format(Locale.US,
+                    "select id from revlog %s order by id limit 1", lim));
+        } else if (by.equals("add")) {
+            lim = String.format(Locale.US, "where did in %s", Utils.ids2str(mCol.getDecks().active()));
+            t = mCol.getDb().queryScalar(String.format(Locale.US,
+                    "select id from cards %s order by id limit 1", lim));
+        }
+        int period;
+        if (t > 0) {
+            period = 1;
+        } else {
+            period = Math.max(1, (int) (1+((mCol.getSched().getDayCutoff() - (t/1000)) / 86400)));
+        }
+        return period;
+    }
+
+
     private Integer _periodDays() {
         switch (mType) {
             case TYPE_MONTH:
@@ -879,6 +1110,14 @@ public class OverviewStatsBuilder {
                 return null;
         }
     }
+
+
+    private String _avgDay(double tot, int num, String unit) {
+        List<String> vals = new ArrayList<>();
+        vals.add(String.format(Locale.US, "%0.1f %s/day", tot / (float) num, unit));
+        return TextUtils.join(", ", vals);
+    }
+
 
     private String bold(Object s) {
         return "<b>"+s+"<b>";
