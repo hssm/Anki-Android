@@ -152,7 +152,7 @@ public class AnkiStatsTaskHandler {
                 }
                 mWebView = (WebView) params[0];
                 mProgressBar = (ProgressBar) params[1];
-                OverviewStatsBuilder overviewStatsBuilder = new OverviewStatsBuilder(mWebView, mCollectionData, mIsWholeCollection, mStatType);
+                OverviewStatsBuilder overviewStatsBuilder = new OverviewStatsBuilder(mCollectionData, mIsWholeCollection, mStatType);
                 return overviewStatsBuilder.report();
             } finally {
                 sLock.unlock();

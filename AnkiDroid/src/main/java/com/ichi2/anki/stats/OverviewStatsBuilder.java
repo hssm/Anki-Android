@@ -1,18 +1,3 @@
-/****************************************************************************************
- * Copyright (c) 2014 Michael Goldbach <michael@m-goldbach.net>                         *
- *                                                                                      *
- * This program is free software; you can redistribute it and/or modify it under        *
- * the terms of the GNU General Public License as published by the Free Software        *
- * Foundation; either version 3 of the License, or (at your option) any later           *
- * version.                                                                             *
- *                                                                                      *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY      *
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A      *
- * PARTICULAR PURPOSE. See the GNU General Public License for more details.             *
- *                                                                                      *
- * You should have received a copy of the GNU General Public License along with         *
- * this program.  If not, see <http://www.gnu.org/licenses/>.                           *
- ****************************************************************************************/
 package com.ichi2.anki.stats;
 
 
@@ -45,12 +30,10 @@ public class OverviewStatsBuilder {
     private static final int FILT_INDEX = 6;
     private static final int MCNT_INDEX = 7;
     private static final int MSUM_INDEX = 8;
-    
+
     private final Collection mCol;
     private final boolean mWholeCollection;
     private final Stats.AxisType mType;
-
-    private OverviewStats mOStats;
 
     // TODO:
     String colYoung = "#7c7";
@@ -72,33 +55,12 @@ public class OverviewStatsBuilder {
                 "body {background-image: url(data:image/png;base64,%s); }\n" +
                 "</style>";
 
-    public class OverviewStats {
-        public int forecastTotalReviews;
-        public double forecastAverageReviews;
-        public int forecastDueTomorrow;
-        public double reviewsPerDayOnAll;
-        public double reviewsPerDayOnStudyDays;
-        public double reviewsTotalMinutes;
-        public double reviewsAverageMinutes;
-        public int allDays;
-        public int daysStudied;
-        public double timePerDayOnAll;
-        public double timePerDayOnStudyDays;
-        public double totalTime;
-        public int totalReviews;
-        public double newCardsPerDay;
-        public int totalNewCards;
-        public double averageInterval;
-        public double longestInterval;
-    }
-
-    public OverviewStatsBuilder(WebView chartView, Collection collectionData, boolean isWholeCollection, Stats.AxisType mStatType) {
-        mWebView = chartView;
-        mCol = collectionData;
+    public OverviewStatsBuilder(Collection col, boolean isWholeCollection, Stats.AxisType mStatType) {
+        mCol = col;
         mWholeCollection = isWholeCollection;
         mType = mStatType;
-        mOStats = new OverviewStats();
     }
+
 
     public String report() {
         String txt = mCSS;
@@ -153,7 +115,7 @@ public class OverviewStatsBuilder {
                 // studied
                 String msgp1 = String.format(Locale.getDefault(), "<!--studied-->%d cards", cards);
                 b += "<br>" + String.format("Studied %s in %ss today.",
-                        bold(msgp1), bold(Utils.fmtTimeSpan(thetime, 1)));
+                        bold(msgp1), bold("TODO: TIMESPAN ME")); // TODO: timespan
                 // again/pass count
                 b += "<br>" + String.format("Again count: %s", bold(failed));
                 if (cards > 0) {
@@ -235,7 +197,7 @@ public class OverviewStatsBuilder {
     private String _dueInfo(int tot, int num) {
         List<String> i = new ArrayList<>();
         _line(i, "Total", String.format(Locale.getDefault(), "%d reviews", tot));
-        _line(i, "Average", _avgDay(tot, num "reviews"));
+        _line(i, "Average", _avgDay(tot, num, "reviews"));
         int tom = mCol.getDb().queryScalar(String.format(Locale.US,
                     "select count() from cards where did in %s and queue in (2,3) " +
                     "and due = ?", _limit()), new String[]{Integer.toString(mCol.getSched().getToday() + 1)});
@@ -297,6 +259,7 @@ public class OverviewStatsBuilder {
         }
         return _introductionGraph(_added(days, chunk), days, "Added");
     }
+
 
     private String _introductionGraph(List<int[]> data, int days, String title) {
         if (data == null || data.size() == 0) {
@@ -404,6 +367,7 @@ public class OverviewStatsBuilder {
         return _ansInfo(totd, studied, first, unit, false, null);
     }
 
+
     private Object[] _ansInfo(List<double[]> totd, int studied, int first, String unit, boolean convHours,
                               Integer total) {
         if (totd == null || totd.size() == 0) {
@@ -413,7 +377,7 @@ public class OverviewStatsBuilder {
         Integer period = _periodDays();
         if (period == null) {
             // base off earliest repetition date
-            period = _deckAge('review');
+            period = _deckAge("review");
         }
         List<String> i = new ArrayList<>();
         _line(i, "Days studied",
@@ -447,10 +411,11 @@ public class OverviewStatsBuilder {
                 text = String.format(Locale.getDefault(), "%.01f cards/minute", perMin);
             }
             _line(i, "Average answer time",
-                    String.format(Locale.getDefault(), "%0.1fs (%s)", (tot*60)/total, text);
+                    String.format(Locale.getDefault(), "%0.1fs (%s)", (tot*60)/total, text));
         }
         return new Object[]{_lineTbl(i), (int) tot}; // TODO: do we tablize?
     }
+
 
     private Object[] _splitRepData(List<double[]> data, List<Object[]> spec) {
         Map<Integer, List<double[]>> sep = new HashMap();
@@ -484,9 +449,9 @@ public class OverviewStatsBuilder {
             String lab = (String) s[2];
             if (totd.get(n).size() > 0 && totcnt.containsKey(n)) {
                 // bars
-                ret.add(null);
+                ret.add(null); // TODO:
                 // lines
-                ret.add(null);
+                ret.add(null); // TODO:
             }
         }
         return new Object[] {ret, alltot};
@@ -496,6 +461,7 @@ public class OverviewStatsBuilder {
     private List<int[]> _added() {
         return _added(7, 1);
     }
+
 
     private List<int[]> _added(Integer num, Integer chunk) {
         List<String> lims = new ArrayList<>();
@@ -644,16 +610,36 @@ public class OverviewStatsBuilder {
      */
 
     private String ivlGraph() {
-        List<Object> i = _ivls();
-        List<int[]> ivls = (List<int[]>) i.get(0);
-        int all = (int) i.get(1);
-        float avg = (float) i.get(2);
-        int max = (int) i.get(3);
-
+        List<Object> iv = _ivls();
+        List<int[]> ivls = (List<int[]>) iv.get(0);
+        int all = (int) iv.get(1);
+        float avg = (float) iv.get(2);
+        int max = (int) iv.get(3);
+        int tot = 0;
+        List<float[]> totd = new ArrayList<>();
         if (ivls.size() == 0 || all == 0) {
-            
+            return "";
         }
-
+        for (int[] v : ivls) {
+            int grp = v[0];
+            int cnt = v[1];
+            tot += cnt;
+            totd.add(new float[]{grp, tot/(float)all*100});
+        }
+        int ivlmax;
+        if (mType == Stats.AxisType.TYPE_MONTH) {
+            ivlmax = 31;
+        } else if (mType == Stats.AxisType.TYPE_YEAR) {
+            ivlmax = 52;
+        } else {
+            ivlmax = Math.max(5, ivls.get(ivls.size() - 1)[0]);
+        }
+        String txt = _title("Intervals", "Delays until reviews are shown again.");
+        // txt = graph stuff TODO
+        List<String> i = new ArrayList<>();
+        _line(i, "Average interval", "TODO: TIMESPAN"); // TODO:
+        _line(i, "Longest interval", "TODO: TIMESPAN"); // TODO:
+        return txt + _lineTbl(i);
     }
 
     private List<Object> _ivls() {
@@ -663,7 +649,7 @@ public class OverviewStatsBuilder {
             chunk = 1; lim = " and grp <= 30";
         } else if (mType == Stats.AxisType.TYPE_YEAR) {
             chunk = 7; lim = " and grp <= 52";
-        } else (mType == Stats.AxisType.TYPE_LIFE) {
+        } else {
             chunk = 30; lim = "";
         }
         List<Object> data = new ArrayList<>();
@@ -914,14 +900,14 @@ public class OverviewStatsBuilder {
         try {
             cur = mCol.getDb().getDatabase().rawQuery(query, null);
             cur.moveToFirst();
-            int c = cur.getInt(0);
-            int f = cur.getInt(1);
+            String c = Integer.toString(cur.getInt(0));
+            String f = Integer.toString(cur.getInt(1));
             _line(i, "Total cards", c);
             _line(i, "Total notes", f);
-            float[] f = _factors();
-            float low = f[0];
-            float avg = f[1];
-            float high = f[2];
+            float[] fc = _factors();
+            float low = fc[0];
+            float avg = fc[1];
+            float high = fc[2];
             if (low > 0) {
                 _line(i, "Lowest ease", String.format(Locale.getDefault(), "%d%%", low));
                 _line(i, "Average ease", String.format(Locale.getDefault(), "%d%%", avg));
@@ -938,7 +924,6 @@ public class OverviewStatsBuilder {
                 cur.close();
             }
         }
-        return "";
     }
 
     private void _line(List<String> i, String a, String b) {
